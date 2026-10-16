@@ -87,10 +87,12 @@ class LockSentryEngine:
             ai_result = self.ai_analyzer.analyze(gate_summary, security_statuses, diffs)
         else:
             # Deterministic baseline mode without AI
-            fallback = self.ai_analyzer._generate_deterministic_fallback_report(gate_summary, security_statuses)
+            fallback = self.ai_analyzer.generate_deterministic_fallback_report(
+                gate_summary, security_statuses, diffs, reason="AI analysis disabled by configuration"
+            )
             ai_result = AIAnalysisResult(
                 model_name="none (baseline mode)",
-                runtime_type="None (deterministic rules only)",
+                runtime_type="Deterministic Rule Engine (No AI Inference)",
                 inference_success=False,
                 is_live_model=False,
                 duration_seconds=0.0,

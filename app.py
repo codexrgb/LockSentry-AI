@@ -109,16 +109,22 @@ def main():
     with st.sidebar.expander("🤖 Open-Weight AI Runtime", expanded=True):
         if health.get("available"):
             st.success(f"Ollama Online ({health.get('url')})")
-            models = health.get("models", [])
-            st.write("**Installed Models:**")
-            for m in models:
-                st.markdown(f"- `{m}`")
-            default_ix = 0
-            for ix, m in enumerate(models):
-                if "gemma2:2b" in m:
-                    default_ix = ix
-                    break
-            selected_model = st.selectbox("Active Inference Model", models, index=default_ix)
+            raw_models = health.get("models", [])
+            approved = [m for m in raw_models if any(appr in m for appr in engine_temp.ai_analyzer.approved_models)]
+            if approved:
+                st.write("**Approved Open-Weight Models Available:**")
+                for m in approved:
+                    st.markdown(f"- `{m}`")
+                default_ix = 0
+                for ix, m in enumerate(approved):
+                    if "gemma2:2b" in m:
+                        default_ix = ix
+                        break
+                selected_model = st.selectbox("Active Inference Model", approved, index=default_ix)
+            else:
+                st.warning("No approved open-weight models found in Ollama runtime.")
+                st.info("System will operate in Deterministic Fallback Mode (zero model hallucination risk).")
+                selected_model = "gemma2:2b"
         else:
             st.warning(f"Ollama Offline ({health.get('url')})")
             st.info("System will operate in Deterministic Fallback Mode (zero model hallucination risk).")
@@ -315,8 +321,8 @@ def main():
                 )
             else:
                 st.warning(
-                    f"**Deterministic Fallback Mode**: Model runtime unavailable ({ai.error_message or 'Offline'}). "
-                    "Safety analysis generated deterministically without unverified AI output."
+                    f"**DETERMINISTIC FALLBACK (Zero AI Inference)**: Local model unavailable or unapproved ({ai.error_message or 'Offline'}). "
+                    "Safety analysis generated deterministically via policy rules without AI inference."
                 )
 
             if ai.report:

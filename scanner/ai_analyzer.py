@@ -1,14 +1,19 @@
 """Open-weight AI Analyzer for LockSentry AI.
 
-Interfaces with a local open-weight model runtime (e.g. Ollama with gemma2:2b or llama3:latest)
-to analyze verified vulnerability records, interpret dependency change context,
-compare remediation trade-offs, identify uncertainty gaps, and generate structured
-evidence-grounded security explanations.
+Interfaces with a local open-weight model runtime (Ollama) to analyze verified
+vulnerability records, interpret dependency change diffs, compare remediation
+trade-offs, identify uncertainty gaps, and generate structured, evidence-grounded
+security explanations.
 
-NON-NEGOTIABLE PRINCIPLE:
-AI inference never overrides deterministic security policies.
-If model inference fails or is offline, the system degrades gracefully with clear indications,
-without skipping any security gate checks.
+NON-NEGOTIABLE PRINCIPLES:
+1. Local Open-Weight Only: Only verified, approved open-weight models (e.g. Google Gemma 2 2B)
+   may be executed. Arbitrary unapproved installed models are strictly disallowed.
+2. Deterministic Precedence: AI inference never overrides deterministic security policies.
+3. Transparent Fallback: If model inference fails, is offline, or no approved model is found,
+   the system executes a deterministic fallback that is explicitly labeled as non-AI.
+   Fallback output is NEVER marked as a live model inference.
+4. Evidence Grounding & Uncertainty: Claims must be grounded in OSV evidence; overconfident
+   or unsupported safety assertions are flagged as grounding violations.
 """
 
 from __future__ import annotations
@@ -17,19 +22,40 @@ import json
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field, ValidationError
 import requests
 
 from scanner.dependency_parser import DependencyDiff
 from scanner.osv_client import PackageSecurityStatus
-from scanner.policy_engine import GateSummary, PolicyCheckResult
+from scanner.policy_engine import GateSummary
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "gemma2:2b"
-FALLBACK_MODEL = "llama3:latest"
+APPROVED_FALLBACK_MODEL = "llama3:latest"
+
+# Explicit allowlist of approved, verified open-weight model identifiers.
+# Arbitrary installed models outside this list will NEVER be silently selected.
+APPROVED_OPEN_WEIGHT_MODELS: Tuple[str, ...] = (
+    "gemma2:2b",
+    "gemma2",
+    "gemma:2b",
+    "gemma",
+    "llama3:latest",
+    "llama3",
+    "llama3:8b",
+)
+
+# Overconfident or unsupported phrases that violate empirical supply-chain security standards.
+OVERCONFIDENT_SAFETY_PATTERNS = [
+    re.compile(r"\b(completely|totally|entirely|100%|guaranteed)\s+safe\b", re.IGNORECASE),
+    re.compile(r"\b(completely|totally|entirely|100%|guaranteed)\s+secure\b", re.IGNORECASE),
+    re.compile(r"\bzero\s+(vulnerabilities|bugs|flaws|risks?)\s+exist\b", re.IGNORECASE),
+    re.compile(r"\bno\s+(security\s+)?risk\b", re.IGNORECASE),
+    re.compile(r"\bimmune\s+to\s+vulnerabilit(y|ies)\b", re.IGNORECASE),
+]
 
 
 class PackageAIInsight(BaseModel):
@@ -72,14 +98,18 @@ class OpenWeightAIAnalyzer:
         self,
         base_url: str = DEFAULT_OLLAMA_URL,
         model_name: str = DEFAULT_MODEL,
-        timeout: float = 60.0
+        fallback_model: str = APPROVED_FALLBACK_MODEL,
+        timeout: float = 60.0,
+        approved_models: Tuple[str, ...] = APPROVED_OPEN_WEIGHT_MODELS,
     ):
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
+        self.fallback_model = fallback_model
         self.timeout = timeout
+        self.approved_models = approved_models
 
     def check_runtime_health(self) -> Dict[str, Any]:
-        """Check if local Ollama runtime is reachable and query available open-weight models."""
+        """Check if local Ollama runtime is reachable and query available models."""
         try:
             resp = requests.get(f"{self.base_url}/api/tags", timeout=5.0)
             if resp.status_code == 200:
@@ -104,42 +134,58 @@ class OpenWeightAIAnalyzer:
                 "url": self.base_url,
             }
 
-    def _select_active_model(self) -> str:
-        """Verify model availability, falling back to an available open-weight model if configured is absent."""
+    def select_active_model(self) -> Optional[str]:
+        """Select an approved open-weight model.
+        
+        Strict Enforcement:
+        1. Checks if configured model is available AND in the approved open-weight allowlist.
+        2. If absent, checks if fallback model is available AND in the approved open-weight allowlist.
+        3. NEVER silently selects an arbitrary installed model outside the approved allowlist.
+        4. Returns None if no approved model is available, triggering deterministic fallback.
+        """
         health = self.check_runtime_health()
         if not health.get("available"):
-            return self.model_name
+            return None
 
         available = health.get("models", [])
-        # Check if requested model is installed
+
+        # 1. Check primary configured model
         for name in available:
             if self.model_name in name:
-                return name
+                # Verify that the model is in the approved open-weight list
+                if any(approved in name for approved in self.approved_models):
+                    return name
+                else:
+                    logger.warning(f"Configured model '{name}' is not in approved open-weight allowlist.")
 
-        # Fallback to secondary known model
+        # 2. Check approved fallback model
         for name in available:
-            if FALLBACK_MODEL in name:
-                logger.info(f"Preferred model '{self.model_name}' not found; falling back to '{name}'")
-                return name
+            if self.fallback_model in name:
+                if any(approved in name for approved in self.approved_models):
+                    logger.info(
+                        f"Primary model '{self.model_name}' unavailable; falling back to approved model '{name}'."
+                    )
+                    return name
 
-        # If any model exists, use the first available open-weight model
-        if available:
-            return available[0]
+        # 3. Security Boundary: Do NOT pick arbitrary models from `available[0]`.
+        logger.warning(
+            f"No approved open-weight model found in Ollama runtime. "
+            f"Available models: {available}. Approved list: {self.approved_models}. "
+            "Refusing to select arbitrary installed model."
+        )
+        return None
 
-        return self.model_name
-
-    def _build_analysis_prompt(
+    def build_analysis_prompt(
         self,
         gate_summary: GateSummary,
         security_statuses: List[PackageSecurityStatus],
         diffs: Optional[List[DependencyDiff]] = None
     ) -> str:
-        """Construct an evidence-grounded prompt containing verified OSV findings and diffs."""
-        # Compile verified evidence into concise, factual prompt context
+        """Construct an evidence-grounded prompt containing verified OSV findings AND actual dependency diffs."""
         evidence_lines = []
         for status in security_statuses:
             vuln_details = []
-            for v in status.vulnerabilities[:3]:  # Limit top 3 to keep prompt tight
+            for v in status.vulnerabilities[:3]:  # Top 3 to maintain high prompt quality
                 vuln_details.append(
                     f"ID: {v.id} (Aliases: {', '.join(v.aliases) or 'None'}), Severity: {v.severity_level}, "
                     f"Summary: {v.summary or 'No summary'}"
@@ -155,30 +201,46 @@ class OpenWeightAIAnalyzer:
                 "ambiguities": status.limitations_and_ambiguity,
             })
 
+        # Explicitly format actual dependency diffs (old vs proposed)
+        diff_entries = []
+        if diffs:
+            for d in diffs:
+                diff_entries.append({
+                    "package": d.name,
+                    "ecosystem": d.ecosystem,
+                    "old_version": d.old_version or "None (New Dependency)",
+                    "new_version": d.new_version or "None (Removed Dependency)",
+                    "change_type": d.change_type,
+                    "is_major_bump": d.is_major_bump,
+                    "version_warning": d.version_comparison_warning,
+                })
+
         prompt_data = {
             "deterministic_gate_outcome": gate_summary.overall_outcome,
             "blocked_count": gate_summary.blocked_count,
             "review_count": gate_summary.review_count,
+            "dependency_changes": diff_entries,
             "packages_evidence": evidence_lines,
         }
 
         prompt = f"""You are LockSentry AI, an expert open-weight security analyzer evaluating software supply chain dependency changes.
-You MUST reason strictly based on the verified evidence provided below. Do NOT invent CVEs, fixed versions, or security scores.
+You MUST reason strictly based on the verified evidence and version diffs provided below. Do NOT invent CVEs, fixed versions, or security scores.
 
-VERIFIED SECURITY EVIDENCE:
+VERIFIED SECURITY EVIDENCE & DEPENDENCY CHANGES:
 {json.dumps(prompt_data, indent=2)}
 
 TASK:
-Analyze the dependency change context and generate a valid JSON object matching the exact schema below:
+Analyze the dependency change context, version diffs (old_version -> new_version), and vulnerability evidence.
+Generate a valid JSON object matching the exact schema below:
 {{
-  "executive_summary": "Concise summary explaining the key supply chain risks and policy outcome.",
+  "executive_summary": "Concise summary explaining the key supply chain risks, version transitions, and policy outcome.",
   "package_insights": [
     {{
       "package_name": "exact name from evidence",
-      "risk_interpretation": "Specific explanation of what these vulnerabilities mean and how severe they are.",
-      "remediation_trade_offs": "Trade-offs between staying on the current version vs upgrading to the recommended fix.",
-      "breaking_change_risk": "Risk of API breaking changes or major version incompatibility.",
-      "uncertainty_gaps": "Any unpinned constraints, missing CVSS scores, or unverified safety gaps.",
+      "risk_interpretation": "Specific explanation of what these vulnerabilities mean and how severe they are in runtime context.",
+      "remediation_trade_offs": "Trade-offs between staying on the old version vs upgrading to the proposed or recommended fix.",
+      "breaking_change_risk": "Risk of API breaking changes or major version incompatibility between versions.",
+      "uncertainty_gaps": "Any unpinned constraints, missing CVSS scores, absence of advisories vs zero-day uncertainty, or unverified safety gaps.",
       "human_review_rationale": "Clear reason why human security/engineering review is required."
     }}
   ],
@@ -193,24 +255,38 @@ CRITICAL RULES:
 1. Return ONLY the valid JSON object. No markdown code fences, no conversational text before or after.
 2. Ground all claims in the provided evidence.
 3. Every package in package_insights must match a package in the evidence.
+4. Do NOT make overconfident claims that an unpinned or unadvisoried package is 'completely safe' or '100% secure'.
+5. Explicitly reference the old vs proposed version diffs where available.
 """
         return prompt
 
-    def _verify_evidence_grounding(
+    def verify_evidence_grounding(
         self,
         report: AIAnalysisReport,
         security_statuses: List[PackageSecurityStatus]
-    ) -> tuple[bool, List[str]]:
-        """Verify that AI claims are strictly grounded in verified OSV evidence without hallucinations."""
+    ) -> Tuple[bool, List[str]]:
+        """Verify that AI claims are strictly grounded in verified OSV evidence without hallucinations or overconfident claims."""
         issues: List[str] = []
         known_pkgs = {s.package_name.lower() for s in security_statuses}
+        status_map = {s.package_name.lower(): s for s in security_statuses}
 
-        # Check that reported packages actually exist in scanned input
+        # 1. Check that reported packages actually exist in scanned input
         for insight in report.package_insights:
-            if insight.package_name.lower() not in known_pkgs:
+            p_name = insight.package_name.lower()
+            if p_name not in known_pkgs:
                 issues.append(f"AI referenced package '{insight.package_name}' which is not in the verified scanned dependencies.")
+            else:
+                s = status_map[p_name]
+                # Check for unsupported safety claims on unpinned packages
+                if not s.is_pinned:
+                    insight_text = (insight.risk_interpretation + " " + insight.remediation_trade_offs).lower()
+                    if "safe" in insight_text and "not safe" not in insight_text:
+                        issues.append(
+                            f"Unsupported safety claim: Package '{insight.package_name}' is unpinned. "
+                            "Unpinned packages cannot be declared safe without an exact locked version."
+                        )
 
-        # Check for hallucinated CVE identifiers in text
+        # 2. Check for hallucinated CVE identifiers in text
         all_known_vuln_ids = set()
         for s in security_statuses:
             for v in s.vulnerabilities:
@@ -222,40 +298,76 @@ CRITICAL RULES:
             report.executive_summary + " " +
             report.overall_upgrade_recommendation + " " +
             " ".join(i.risk_interpretation + " " + i.remediation_trade_offs for i in report.package_insights)
-        ).upper()
+        )
 
-        cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}")
+        cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
         found_cves = cve_pattern.findall(combined_text)
         for cve in found_cves:
-            if cve not in all_known_vuln_ids:
+            if cve.upper() not in all_known_vuln_ids:
                 issues.append(f"AI mentioned CVE '{cve}' which was not in verified OSV evidence (potential hallucination).")
+
+        # 3. Check for overconfident or unsupported absolute safety claims
+        for pat in OVERCONFIDENT_SAFETY_PATTERNS:
+            match = pat.search(combined_text)
+            if match:
+                issues.append(
+                    f"Overconfident safety assertion detected ('{match.group(0)}'). "
+                    "Absence of recorded OSV advisories does not guarantee absolute safety or zero-day immunity."
+                )
 
         return len(issues) == 0, issues
 
-    def _generate_deterministic_fallback_report(
+    def generate_deterministic_fallback_report(
         self,
         gate_summary: GateSummary,
-        security_statuses: List[PackageSecurityStatus]
+        security_statuses: List[PackageSecurityStatus],
+        diffs: Optional[List[DependencyDiff]] = None,
+        reason: str = "AI inference runtime unavailable"
     ) -> AIAnalysisReport:
-        """Provide a rigorous rule-based explanation when the AI model runtime is offline or fails validation."""
+        """Provide a rigorous rule-based explanation when AI model runtime is offline, unapproved, or fails validation.
+        
+        Strict Labeling:
+        The output is explicitly stamped as [DETERMINISTIC FALLBACK — NOT AI GENERATED] to prevent
+        any perception of automated model hallucination or false inference claims.
+        """
+        diff_map = {d.name.lower(): d for d in (diffs or [])}
         insights = []
+
         for s in security_statuses:
+            d = diff_map.get(s.package_name.lower())
+            old_v = d.old_version if d else None
+            new_v = s.version
+
             if s.vulnerabilities:
                 vuln_count = len(s.vulnerabilities)
                 cves = [v.id for v in s.vulnerabilities[:2]]
-                risk = f"Package has {vuln_count} confirmed advisory records in OSV ({', '.join(cves)}). Immediate remediation recommended."
-                trade_off = f"Remaining on version {s.version} carries known exploit risk. Upgrading to {s.recommended_fixed_version or 'latest patched version'} mitigates vulnerability."
-                breaking = "Review package release notes for breaking changes before deployment."
+                risk = (
+                    f"[Deterministic Rule] Package has {vuln_count} confirmed advisory records in OSV "
+                    f"({', '.join(cves)}). Immediate remediation required."
+                )
+                trade_off = (
+                    f"Remaining on version {new_v} maintains known CVE exposure. "
+                    f"Upgrading to {s.recommended_fixed_version or 'latest patched release'} eliminates vulnerability."
+                )
+                breaking = (
+                    "Major version bump detected — test for breaking changes."
+                    if (d and d.is_major_bump) else
+                    "Review package release notes before merging."
+                )
                 review = f"Verify compatibility with target version {s.recommended_fixed_version or 'patch release'}."
             elif not s.is_pinned:
-                risk = "Unpinned version constraint allows variable package resolution at build time."
+                risk = "[Deterministic Rule] Unpinned version constraint allows variable package resolution at build time."
                 trade_off = "Floating version ranges may pull untested upstream updates."
                 breaking = "Future dependency builds may break if an incompatible minor/major version is published."
                 review = "Pin exact dependency version in manifest or generate a lockfile."
             else:
-                risk = f"No known security advisories found in OSV database for version {s.version}."
+                risk = f"[Deterministic Rule] No known security advisories found in OSV database for version {new_v}."
                 trade_off = "Package meets current deterministic security baseline."
-                breaking = "No upgrade necessary at this time."
+                breaking = (
+                    "Major version bump detected — verify backward compatibility."
+                    if (d and d.is_major_bump) else
+                    "No upgrade necessary at this time."
+                )
                 review = "Standard peer review recommended."
 
             insights.append(
@@ -270,10 +382,11 @@ CRITICAL RULES:
             )
 
         summary = (
-            f"Deterministic Security Assessment: Gate decision is {gate_summary.overall_outcome}. "
+            f"[DETERMINISTIC FALLBACK — NOT AI GENERATED] "
+            f"Gate decision is {gate_summary.overall_outcome}. "
             f"Evaluated {gate_summary.total_packages_evaluated} dependencies ({gate_summary.blocked_count} blocked, "
             f"{gate_summary.review_count} requiring review, {gate_summary.passed_count} passed). "
-            "[FALLBACK MODE: AI inference runtime unavailable; analysis generated via deterministic security engine]."
+            f"Reason: {reason}. All explanations generated via deterministic security engine rules."
         )
 
         return AIAnalysisReport(
@@ -290,10 +403,41 @@ CRITICAL RULES:
         security_statuses: List[PackageSecurityStatus],
         diffs: Optional[List[DependencyDiff]] = None
     ) -> AIAnalysisResult:
-        """Perform end-to-end AI analysis using local open-weight model with strict validation and grounding checks."""
+        """Perform end-to-end AI analysis using an approved local open-weight model with strict validation.
+        
+        Guarantees:
+        - Only approved open-weight models are ever executed.
+        - Dependency diffs are included in the prompt.
+        - Fallbacks are explicitly stamped as deterministic and NOT live model inferences.
+        - Grounding checks detect hallucinations and overconfident safety claims.
+        """
         start_t = time.perf_counter()
-        active_model = self._select_active_model()
-        prompt = self._build_analysis_prompt(gate_summary, security_statuses, diffs)
+        active_model = self.select_active_model()
+
+        # If no approved open-weight model is available, execute deterministic fallback immediately
+        if not active_model:
+            elapsed = time.perf_counter() - start_t
+            err_msg = (
+                f"No approved open-weight model found in Ollama runtime. "
+                f"Configured: '{self.model_name}', Approved: {self.approved_models}. "
+                "Arbitrary model fallback disallowed."
+            )
+            fallback = self.generate_deterministic_fallback_report(
+                gate_summary, security_statuses, diffs, reason=err_msg
+            )
+            return AIAnalysisResult(
+                model_name=f"{self.model_name} (Unavailable - Fallback Used)",
+                runtime_type="Deterministic Rule Engine (No AI Inference)",
+                inference_success=False,
+                is_live_model=False,
+                duration_seconds=elapsed,
+                error_message=err_msg,
+                report=fallback,
+                grounding_verified=True,
+                grounding_issues=[],
+            )
+
+        prompt = self.build_analysis_prompt(gate_summary, security_statuses, diffs)
 
         payload = {
             "model": active_model,
@@ -301,7 +445,9 @@ CRITICAL RULES:
             "stream": False,
             "format": "json",
             "options": {
-                "temperature": 0.2,  # Low temperature for factual, grounded responses
+                "temperature": 0.25,
+                "top_p": 0.9,
+                "repeat_penalty": 1.15,
                 "num_predict": 1024,
             }
         }
@@ -317,10 +463,12 @@ CRITICAL RULES:
             if resp.status_code != 200:
                 err_msg = f"Ollama HTTP {resp.status_code}: {resp.text[:200]}"
                 logger.warning(f"AI inference error: {err_msg}")
-                fallback = self._generate_deterministic_fallback_report(gate_summary, security_statuses)
+                fallback = self.generate_deterministic_fallback_report(
+                    gate_summary, security_statuses, diffs, reason=err_msg
+                )
                 return AIAnalysisResult(
-                    model_name=active_model,
-                    runtime_type="Ollama (local open-weight)",
+                    model_name=f"{active_model} (Failed - Fallback Used)",
+                    runtime_type="Deterministic Rule Engine (No AI Inference)",
                     inference_success=False,
                     is_live_model=False,
                     duration_seconds=elapsed,
@@ -333,8 +481,7 @@ CRITICAL RULES:
             data = resp.json()
             raw_text = data.get("response", "").strip()
 
-            # Parse JSON
-            # In case model wrapped response in markdown fences ```json ... ```
+            # Clean markdown code fences if model returned ```json ... ```
             cleaned_text = raw_text
             if "```json" in cleaned_text:
                 cleaned_text = cleaned_text.split("```json", 1)[1].split("```", 1)[0].strip()
@@ -344,8 +491,8 @@ CRITICAL RULES:
             parsed_json = json.loads(cleaned_text)
             validated_report = AIAnalysisReport.model_validate(parsed_json)
 
-            # Grounding check
-            is_grounded, grounding_issues = self._verify_evidence_grounding(validated_report, security_statuses)
+            # Grounding and overconfident claim verification
+            is_grounded, grounding_issues = self.verify_evidence_grounding(validated_report, security_statuses)
 
             return AIAnalysisResult(
                 model_name=active_model,
@@ -363,11 +510,13 @@ CRITICAL RULES:
             elapsed = time.perf_counter() - start_t
             err_msg = f"AI inference/validation failed: {str(exc)}"
             logger.warning(err_msg)
-            fallback = self._generate_deterministic_fallback_report(gate_summary, security_statuses)
+            fallback = self.generate_deterministic_fallback_report(
+                gate_summary, security_statuses, diffs, reason=err_msg
+            )
 
             return AIAnalysisResult(
-                model_name=active_model,
-                runtime_type="Ollama (local open-weight)",
+                model_name=f"{active_model} (Invalid Output - Fallback Used)",
+                runtime_type="Deterministic Rule Engine (No AI Inference)",
                 inference_success=False,
                 is_live_model=False,
                 duration_seconds=elapsed,

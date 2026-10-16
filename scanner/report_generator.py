@@ -97,7 +97,8 @@ def generate_markdown_report(
         md.append(f"> Grounding check: verified all package and advisory references against OSV records.")
     else:
         md.append(f"> [!WARNING]")
-        md.append(f"> **AI Inference Status**: Fallback mode active ({ai_result.error_message or 'Model offline'}). Analysis generated via deterministic rules.")
+        md.append(f"> **AI Inference Status**: **DETERMINISTIC FALLBACK (ZERO AI INFERENCE EXECUTED)**")
+        md.append(f"> **Runtime Note**: {ai_result.error_message or 'Local model offline, unapproved, or disabled'}. All explanations were produced deterministically by the rule engine.")
 
     if ai_result.report:
         md.append(f"")
