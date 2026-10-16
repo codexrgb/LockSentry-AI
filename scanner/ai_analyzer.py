@@ -23,7 +23,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 import requests
 
 from scanner.dependency_parser import DependencyDiff
@@ -57,6 +57,8 @@ OVERCONFIDENT_SAFETY_PATTERNS = [
     re.compile(r"\bimmune\s+to\s+vulnerabilit(y|ies)\b", re.IGNORECASE),
 ]
 
+SAFE_DEFAULT_MISSING_DETAIL = "The model did not provide this detail."
+
 
 class PackageAIInsight(BaseModel):
     """Structured AI reasoning for an individual dependency."""
@@ -67,6 +69,22 @@ class PackageAIInsight(BaseModel):
     uncertainty_gaps: str = Field(..., description="Missing data, unpinned ambiguities, or unverified assumptions")
     human_review_rationale: str = Field(..., description="Why human judgment or testing is needed before merging")
 
+    @field_validator(
+        "risk_interpretation",
+        "remediation_trade_offs",
+        "breaking_change_risk",
+        "uncertainty_gaps",
+        "human_review_rationale",
+        mode="before"
+    )
+    @classmethod
+    def _normalize_nullable_detail_strings(cls, v: Any) -> Any:
+        if v is None:
+            return SAFE_DEFAULT_MISSING_DETAIL
+        if isinstance(v, str) and not v.strip():
+            return SAFE_DEFAULT_MISSING_DETAIL
+        return v
+
 
 class AIAnalysisReport(BaseModel):
     """Validated structured output produced by the open-weight AI model."""
@@ -75,6 +93,62 @@ class AIAnalysisReport(BaseModel):
     overall_upgrade_recommendation: str = Field(..., description="Pragmatic guidance for developers")
     confidence_score: float = Field(0.0, description="Self-assessed confidence score between 0.0 and 1.0 based on evidence completeness")
     unresolved_questions: List[str] = Field(default_factory=list, description="Explicit questions maintainers should resolve")
+
+    @field_validator("executive_summary", "overall_upgrade_recommendation", mode="before")
+    @classmethod
+    def _normalize_nullable_report_strings(cls, v: Any) -> Any:
+        if v is None:
+            return SAFE_DEFAULT_MISSING_DETAIL
+        if isinstance(v, str) and not v.strip():
+            return SAFE_DEFAULT_MISSING_DETAIL
+        return v
+
+
+def normalize_structured_model_output(data: Any) -> Any:
+    """Normalize model-generated structured dictionary before Pydantic validation.
+
+    Handles nullable or missing optional string fields by substituting a safe,
+    explicit default ('The model did not provide this detail.').
+    Preserves strict validation: does NOT convert arbitrary complex objects into strings.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    normalized = dict(data)
+
+    for field in ("executive_summary", "overall_upgrade_recommendation"):
+        val = normalized.get(field)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            normalized[field] = SAFE_DEFAULT_MISSING_DETAIL
+
+    if normalized.get("unresolved_questions") is None:
+        normalized["unresolved_questions"] = []
+
+    if normalized.get("confidence_score") is None:
+        normalized["confidence_score"] = 0.5
+
+    raw_insights = normalized.get("package_insights")
+    if isinstance(raw_insights, list):
+        norm_insights = []
+        for item in raw_insights:
+            if isinstance(item, dict):
+                norm_item = dict(item)
+                for f in (
+                    "risk_interpretation",
+                    "remediation_trade_offs",
+                    "breaking_change_risk",
+                    "uncertainty_gaps",
+                    "human_review_rationale",
+                ):
+                    v = norm_item.get(f)
+                    if v is None or (isinstance(v, str) and not v.strip()):
+                        norm_item[f] = SAFE_DEFAULT_MISSING_DETAIL
+                norm_insights.append(norm_item)
+            else:
+                norm_insights.append(item)
+        normalized["package_insights"] = norm_insights
+
+    return normalized
 
 
 class AIAnalysisResult(BaseModel):
@@ -503,7 +577,8 @@ CRITICAL RULES:
                 cleaned_text = cleaned_text.split("```", 1)[1].split("```", 1)[0].strip()
 
             parsed_json = json.loads(cleaned_text)
-            validated_report = AIAnalysisReport.model_validate(parsed_json)
+            normalized_json = normalize_structured_model_output(parsed_json)
+            validated_report = AIAnalysisReport.model_validate(normalized_json)
 
             # Grounding and overconfident claim verification
             is_grounded, grounding_issues = self.verify_evidence_grounding(validated_report, security_statuses)

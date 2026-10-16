@@ -13,7 +13,7 @@ LockSentry AI is a pre-merge dependency security gate that inspects software dep
 | **Phase 2** | Minimum Working System | **COMPLETED** | Implemented `scanner/dependency_parser.py` (requirements.txt & package-lock.json v1/v2/v3), `scanner/osv_client.py` (OSV API with batching & fix extraction), `scanner/policy_engine.py` (deterministic PASS/BLOCK/REVIEW), and `scanner/report_generator.py`. |
 | **Phase 3** | Open-Weight AI Integration Refinements | **COMPLETED** | Refined `scanner/ai_analyzer.py`: enforced strict model allowlist (`APPROVED_OPEN_WEIGHT_MODELS`), added actual dependency diffs (old vs proposed version transitions) into AI prompt, added overconfident safety claim verification, tuned sampling parameters (`repeat_last_n: 64`, `stop: ["<end_of_turn>"]`), and explicitly labeled fallback outputs as deterministic non-AI. |
 | **Phase 4** | Build Interface (Streamlit) | **COMPLETED** | Built `app.py` with multi-mode file uploaders, comparative gate (Existing vs Proposed), KPI cards, deep-dive tabs for AI insights, deterministic rules, OSV evidence, version diffs, and JSON/Markdown export buttons. |
-| **Phase 5** | Test & Improve | **COMPLETED** | Expanded test suite to **36 automated pytest tests** covering parsers, OSV clients, policy rules, AI schema validation, model allowlists, diff serialization, overconfident claim rejection, live model inference, and end-to-end integration workflows. **Result: 36 passed, 0 failed in 26.07s.** |
+| **Phase 5** | Test & Improve | **COMPLETED** | Expanded test suite to **38 automated pytest tests** covering parsers, OSV clients, policy rules, AI schema validation, structured output normalization, model allowlists, diff serialization, overconfident claim rejection, live model inference with diffs, and end-to-end integration workflows. **Result: 38 passed, 0 failed in 26.00s.** |
 | **Phase 6** | Evaluate & Benchmark | **COMPLETED** | Executed `benchmark/run_evaluation.py` across 8 ground truth test cases comparing baseline vs AI-assisted gate. **Result: 100% recall, 0% false block rate, 100% remediation accuracy, 100% AI grounding, 100% live inference success rate.** |
 | **Phase 7** | Documentation | **COMPLETED** | Authored `README.md`, `docs/architecture.md` (with Mermaid diagrams), `docs/threat_model.md` (STRIDE matrix), and `docs/evaluation.md`. |
 | **Phase 8** | Final Audit & Verification | **COMPLETED** | Audited repository for secrets, private data, ungrounded claims, and code cleanliness. Maintained local Git repository without unauthorized publication. |
@@ -41,16 +41,18 @@ LockSentry AI is a pre-merge dependency security gate that inspects software dep
 
 ## 4. Log of Executed Commands & Actual Test Results
 
-### 1. Automated Test Suite (Pytest - 36 Tests)
+### 1. Automated Test Suite (Pytest - 38 Tests)
 **Command**:
 ```bash
 python -m pytest -v
 ```
 **Actual Result**:
 ```text
-============================= 36 passed in 26.07s =============================
-- tests/test_ai_analyzer.py (12 passed):
+============================= 38 passed in 26.00s =============================
+- tests/test_ai_analyzer.py (14 passed):
   * test_ai_schema_validation: PASSED
+  * test_package_insight_null_uncertainty_gaps_normalization: PASSED
+  * test_ai_report_with_null_uncertainty_gaps: PASSED
   * test_model_selection_approved_primary: PASSED
   * test_model_selection_approved_fallback: PASSED
   * test_model_selection_rejects_arbitrary_unapproved_model: PASSED

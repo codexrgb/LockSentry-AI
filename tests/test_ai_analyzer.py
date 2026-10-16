@@ -15,12 +15,15 @@ Covers:
 from unittest.mock import MagicMock, patch
 import pytest
 import requests
+from pydantic import ValidationError
 
 from scanner.ai_analyzer import (
+    SAFE_DEFAULT_MISSING_DETAIL,
     AIAnalysisReport,
     AIAnalysisResult,
     OpenWeightAIAnalyzer,
     PackageAIInsight,
+    normalize_structured_model_output,
 )
 from scanner.dependency_parser import DependencyDiff
 from scanner.osv_client import PackageSecurityStatus, VulnerabilityEvidence
@@ -49,6 +52,65 @@ def test_ai_schema_validation():
     assert report.confidence_score == 0.95
     assert len(report.package_insights) == 1
     assert report.package_insights[0].package_name == "requests"
+
+
+def test_package_insight_null_uncertainty_gaps_normalization():
+    """Verify that null/empty uncertainty_gaps and detail fields normalize safely to SAFE_DEFAULT_MISSING_DETAIL."""
+    insight_data = {
+        "package_name": "requests",
+        "risk_interpretation": "Vulnerable to header leak.",
+        "remediation_trade_offs": "Upgrade to 2.33.1",
+        "breaking_change_risk": None,
+        "uncertainty_gaps": None,
+        "human_review_rationale": "",
+    }
+    insight = PackageAIInsight.model_validate(insight_data)
+    assert insight.uncertainty_gaps == SAFE_DEFAULT_MISSING_DETAIL
+    assert insight.breaking_change_risk == SAFE_DEFAULT_MISSING_DETAIL
+    assert insight.human_review_rationale == SAFE_DEFAULT_MISSING_DETAIL
+
+    # Ensure strict validation is preserved: missing or null package_name MUST raise ValidationError
+    with pytest.raises(ValidationError):
+        PackageAIInsight.model_validate({
+            "package_name": None,
+            "risk_interpretation": "Test",
+        })
+
+
+def test_ai_report_with_null_uncertainty_gaps():
+    """Verify end-to-end normalization of model output containing null uncertainty_gaps."""
+    raw_model_json = {
+        "executive_summary": "Security assessment complete.",
+        "package_insights": [
+            {
+                "package_name": "requests",
+                "risk_interpretation": "Known CVE present in version 2.25.0.",
+                "remediation_trade_offs": "Fix available in 2.33.1.",
+                "breaking_change_risk": "Low risk.",
+                "uncertainty_gaps": None,
+                "human_review_rationale": None,
+            }
+        ],
+        "overall_upgrade_recommendation": "Upgrade requests to 2.33.1.",
+        "confidence_score": 0.9,
+        "unresolved_questions": None,
+    }
+
+    normalized = normalize_structured_model_output(raw_model_json)
+    report = AIAnalysisReport.model_validate(normalized)
+
+    assert report.package_insights[0].uncertainty_gaps == SAFE_DEFAULT_MISSING_DETAIL
+    assert report.package_insights[0].human_review_rationale == SAFE_DEFAULT_MISSING_DETAIL
+    assert report.unresolved_questions == []
+
+    # Verify that arbitrary non-string objects for string fields still fail strict validation
+    corrupt_json = {
+        "executive_summary": {"complex": "object"},  # invalid type
+        "package_insights": [],
+        "overall_upgrade_recommendation": "Upgrade",
+    }
+    with pytest.raises(ValidationError):
+        AIAnalysisReport.model_validate(normalize_structured_model_output(corrupt_json))
 
 
 def test_model_selection_approved_primary():
