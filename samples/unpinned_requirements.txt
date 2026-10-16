@@ -1,0 +1,4 @@
+# Unpinned requirements to test REVIEW policy decisions
+requests>=2.0.0
+flask
+cryptography~=3.2

@@ -1,0 +1,5 @@
+# Malformed lines and exotic dependencies
+@@invalid_syntax@@!!
+requests == 2.25.0
+git+https://github.com/psf/requests.git@v2.25.0
+another-corrupt-line:::bad

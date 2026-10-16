@@ -1,0 +1,194 @@
+{
+  "dataset_size": 8,
+  "vulnerability_detection_precision": 0.8,
+  "vulnerability_detection_recall": 1.0,
+  "false_block_rate_on_benign": 0.0,
+  "correct_remediation_version_rate": 1.0,
+  "ai_evidence_grounding_rate": 1.0,
+  "ai_model_evaluated": "gemma2:2b",
+  "ai_live_inference_rate": 1.0,
+  "avg_baseline_latency_ms": 758.97,
+  "avg_ai_latency_ms": 16730.76,
+  "baseline_decision_accuracy": 1.0,
+  "ai_decision_accuracy": 1.0,
+  "test_results_baseline": [
+    {
+      "tc_id": "TC-01",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "2.31.0",
+      "latency_ms": 1112.13829999906
+    },
+    {
+      "tc_id": "TC-02",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "4.17.19",
+      "latency_ms": 910.2167999953963
+    },
+    {
+      "tc_id": "TC-03",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "latency_ms": 374.08969999523833
+    },
+    {
+      "tc_id": "TC-04",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "latency_ms": 386.32020002114587
+    },
+    {
+      "tc_id": "TC-05",
+      "decision": "REVIEW",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": false,
+      "rec_version": "74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5",
+      "latency_ms": 575.9390999737661
+    },
+    {
+      "tc_id": "TC-06",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "2.31.0",
+      "latency_ms": 904.4179999909829
+    },
+    {
+      "tc_id": "TC-07",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "latency_ms": 369.2037999862805
+    },
+    {
+      "tc_id": "TC-08",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "0.21.2",
+      "latency_ms": 1439.4365999905858
+    }
+  ],
+  "test_results_ai": [
+    {
+      "tc_id": "TC-01",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "2.31.0",
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 22463.847900013207,
+      "ai_duration_s": 21.22499620000599,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-02",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "4.17.19",
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 18384.133699990343,
+      "ai_duration_s": 17.500270199991064,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-03",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 13370.294199994532,
+      "ai_duration_s": 12.991038700012723,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-04",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 13798.947100003716,
+      "ai_duration_s": 13.426014500000747,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-05",
+      "decision": "REVIEW",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": false,
+      "rec_version": "74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5",
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 16394.37920000637,
+      "ai_duration_s": 15.842128799995407,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-06",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "2.31.0",
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 15966.91099999589,
+      "ai_duration_s": 15.114303999987897,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-07",
+      "decision": "PASS",
+      "decision_correct": true,
+      "vulns_detected": false,
+      "vulns_correct": true,
+      "rec_version": null,
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 13600.828599999659,
+      "ai_duration_s": 13.234048400016036,
+      "insights_count": 1
+    },
+    {
+      "tc_id": "TC-08",
+      "decision": "BLOCK",
+      "decision_correct": true,
+      "vulns_detected": true,
+      "vulns_correct": true,
+      "rec_version": "0.21.2",
+      "ai_live": true,
+      "ai_grounded": true,
+      "latency_ms": 19866.77629998303,
+      "ai_duration_s": 18.38314150000224,
+      "insights_count": 1
+    }
+  ]
+}

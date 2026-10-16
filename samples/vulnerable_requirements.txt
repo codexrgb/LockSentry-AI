@@ -1,0 +1,4 @@
+# Known vulnerable dependencies for testing LockSentry AI
+requests==2.25.0
+click==8.0.0
+packaging==24.0

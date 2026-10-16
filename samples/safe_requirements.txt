@@ -1,0 +1,4 @@
+# Verified clean dependencies with zero known advisories in OSV
+requests==2.33.1
+click==8.1.7
+packaging==24.1
