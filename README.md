@@ -1,7 +1,7 @@
 # LockSentry AI 🛡️
 
 **AI-Assisted Software Dependency Security Gate**  
-Enforcing Reliable Security Rules Using Trusted OSV.dev Vulnerability Data and Lightweight Local AI (Gemma 2 2B) (Gemma 2 2B)*
+Enforcing Reliable Security Rules Using Trusted OSV.dev Vulnerability Data and Lightweight Local AI (Gemma 2.2B) (Gemma 2.2B)*
 
 ---
 
