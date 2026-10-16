@@ -445,23 +445,37 @@ CRITICAL RULES:
             "stream": False,
             "format": "json",
             "options": {
-                "temperature": 0.25,
+                "temperature": 0.3,
                 "top_p": 0.9,
                 "repeat_penalty": 1.15,
+                "repeat_last_n": 64,
+                "stop": ["<end_of_turn>"],
                 "num_predict": 1024,
             }
         }
 
         try:
-            resp = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.timeout
-            )
+            resp = None
+            for attempt, (temp, penalty) in enumerate([(0.3, 1.15), (0.4, 1.2)], start=1):
+                payload["options"]["temperature"] = temp
+                payload["options"]["repeat_penalty"] = penalty
+                resp = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=self.timeout
+                )
+                if resp.status_code == 200:
+                    break
+                elif "repeat limit" in resp.text and attempt == 1:
+                    logger.warning("Ollama token repeat limit hit; retrying with adjusted sampling parameters.")
+                    continue
+                else:
+                    break
+
             elapsed = time.perf_counter() - start_t
 
-            if resp.status_code != 200:
-                err_msg = f"Ollama HTTP {resp.status_code}: {resp.text[:200]}"
+            if resp is None or resp.status_code != 200:
+                err_msg = f"Ollama HTTP {resp.status_code if resp else 'No response'}: {resp.text[:200] if resp else 'None'}"
                 logger.warning(f"AI inference error: {err_msg}")
                 fallback = self.generate_deterministic_fallback_report(
                     gate_summary, security_statuses, diffs, reason=err_msg

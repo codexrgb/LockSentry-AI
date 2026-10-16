@@ -6,9 +6,9 @@
   "correct_remediation_version_rate": 1.0,
   "ai_evidence_grounding_rate": 1.0,
   "ai_model_evaluated": "gemma2:2b",
-  "ai_live_inference_rate": 0.875,
-  "avg_baseline_latency_ms": 795.02,
-  "avg_ai_latency_ms": 19725.75,
+  "ai_live_inference_rate": 1.0,
+  "avg_baseline_latency_ms": 795.11,
+  "avg_ai_latency_ms": 15931.03,
   "baseline_decision_accuracy": 1.0,
   "ai_decision_accuracy": 1.0,
   "test_results_baseline": [
@@ -19,7 +19,7 @@
       "vulns_detected": true,
       "vulns_correct": true,
       "rec_version": "2.31.0",
-      "latency_ms": 1047.28949998389
+      "latency_ms": 1214.3153000215534
     },
     {
       "tc_id": "TC-02",
@@ -28,7 +28,7 @@
       "vulns_detected": true,
       "vulns_correct": true,
       "rec_version": "4.17.19",
-      "latency_ms": 1010.0887000153307
+      "latency_ms": 902.2484000015538
     },
     {
       "tc_id": "TC-03",
@@ -37,7 +37,7 @@
       "vulns_detected": false,
       "vulns_correct": true,
       "rec_version": null,
-      "latency_ms": 394.306999980472
+      "latency_ms": 400.1747999864165
     },
     {
       "tc_id": "TC-04",
@@ -46,7 +46,7 @@
       "vulns_detected": false,
       "vulns_correct": true,
       "rec_version": null,
-      "latency_ms": 380.8820999984164
+      "latency_ms": 415.36959999939427
     },
     {
       "tc_id": "TC-05",
@@ -55,7 +55,7 @@
       "vulns_detected": true,
       "vulns_correct": false,
       "rec_version": "74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5",
-      "latency_ms": 534.8937000089791
+      "latency_ms": 588.2866999891121
     },
     {
       "tc_id": "TC-06",
@@ -64,7 +64,7 @@
       "vulns_detected": true,
       "vulns_correct": true,
       "rec_version": "2.31.0",
-      "latency_ms": 882.3899000126403
+      "latency_ms": 1001.9855000136886
     },
     {
       "tc_id": "TC-07",
@@ -73,7 +73,7 @@
       "vulns_detected": false,
       "vulns_correct": true,
       "rec_version": null,
-      "latency_ms": 394.228999997722
+      "latency_ms": 394.7035000019241
     },
     {
       "tc_id": "TC-08",
@@ -82,7 +82,7 @@
       "vulns_detected": true,
       "vulns_correct": true,
       "rec_version": "0.21.2",
-      "latency_ms": 1716.1191000195686
+      "latency_ms": 1443.8135999953374
     }
   ],
   "test_results_ai": [
@@ -95,8 +95,8 @@
       "rec_version": "2.31.0",
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 20192.652500001714,
-      "ai_duration_s": 18.753975400002673,
+      "latency_ms": 15451.87970000552,
+      "ai_duration_s": 14.391473800002132,
       "insights_count": 1
     },
     {
@@ -106,10 +106,10 @@
       "vulns_detected": true,
       "vulns_correct": true,
       "rec_version": "4.17.19",
-      "ai_live": false,
+      "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 22024.01130000362,
-      "ai_duration_s": 21.198243199993158,
+      "latency_ms": 16244.012000010116,
+      "ai_duration_s": 15.353292299987515,
       "insights_count": 1
     },
     {
@@ -121,8 +121,8 @@
       "rec_version": null,
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 16409.213100007037,
-      "ai_duration_s": 16.03363459999673,
+      "latency_ms": 12023.348999995505,
+      "ai_duration_s": 11.55291239998769,
       "insights_count": 1
     },
     {
@@ -134,8 +134,8 @@
       "rec_version": null,
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 16748.000800027512,
-      "ai_duration_s": 16.372961499990197,
+      "latency_ms": 13949.668100016424,
+      "ai_duration_s": 13.558443599991733,
       "insights_count": 1
     },
     {
@@ -147,8 +147,8 @@
       "rec_version": "74ea7cf7a6a27a4eeb2ae24e162bcc942a6706d5",
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 19897.10910001304,
-      "ai_duration_s": 19.40964170001098,
+      "latency_ms": 18763.353799993638,
+      "ai_duration_s": 18.294215600006282,
       "insights_count": 1
     },
     {
@@ -160,8 +160,8 @@
       "rec_version": "2.31.0",
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 22710.73969997815,
-      "ai_duration_s": 21.85135720000835,
+      "latency_ms": 16041.210099996533,
+      "ai_duration_s": 15.112622699991334,
       "insights_count": 1
     },
     {
@@ -173,8 +173,8 @@
       "rec_version": null,
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 19580.28799999738,
-      "ai_duration_s": 19.20239620000939,
+      "latency_ms": 15926.366300001973,
+      "ai_duration_s": 15.538675999996485,
       "insights_count": 1
     },
     {
@@ -186,8 +186,8 @@
       "rec_version": "0.21.2",
       "ai_live": true,
       "ai_grounded": true,
-      "latency_ms": 20243.984899978386,
-      "ai_duration_s": 18.86174339998979,
+      "latency_ms": 19048.38480000035,
+      "ai_duration_s": 17.746512499987148,
       "insights_count": 1
     }
   ]
